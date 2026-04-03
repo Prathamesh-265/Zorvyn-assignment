@@ -154,47 +154,4 @@ All endpoints are documented and interactive. Click **Authorize** (top right), p
 | View own profile        | ✅     | ✅      | ✅    |
 | Update own name/password| ✅     | ✅      | ✅    |
 
-RBAC is enforced via the `authorize(...roles)` middleware factory in `src/middleware/auth.js` and applied per-route.
 
----
-
-## Key Design Decisions & Assumptions
-
-**Soft deletes** — financial records are never hard-deleted. A `deleted_at` timestamp is set instead. This preserves audit trails and allows potential recovery. Users are "deactivated" (status = inactive) rather than deleted.
-
-**Synchronous SQLite via better-sqlite3** — chosen deliberately. `better-sqlite3` is synchronous and simpler than async drivers without sacrificing correctness for a single-process dev/assessment server. All DB calls are wrapped in service functions so swapping the driver later is isolated.
-
-**JWT stored client-side** — no session store. Tokens expire in 8 hours. For production, add token blacklisting on logout using Redis or a `revoked_tokens` table.
-
-**Analyst cannot create/edit records** — the analyst role is read-focused. Only admins manage data integrity, matching a real finance team model where analysts consume but don't produce records.
-
-**Viewer cannot access dashboard** — the dashboard surfaces aggregated financials which may be sensitive. Viewers only see raw (paginated) records. Promote to analyst to unlock analytics.
-
-**Password in PATCH /api/users/:id** — users can change their own password. The new password is hashed before storage. Admins can change any user's password as well.
-
-**Environment variable** — set `JWT_SECRET` in production:
-```bash
-JWT_SECRET=your_long_random_secret PORT=3000 node src/index.js
-```
-
----
-
-## Example: Quick curl walkthrough
-
-```bash
-# 1. Login as admin
-TOKEN=$(curl -s -X POST http://localhost:3000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@example.com","password":"password123"}' | \
-  node -e "process.stdin.resume();let b='';process.stdin.on('data',d=>b+=d);process.stdin.on('end',()=>console.log(JSON.parse(b).token))")
-
-# 2. Create a record
-curl -X POST http://localhost:3000/api/records \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"amount":5000,"type":"income","category":"Salary","date":"2024-06-01","notes":"June salary"}'
-
-# 3. Get dashboard summary (as analyst)
-curl http://localhost:3000/api/dashboard/summary \
-  -H "Authorization: Bearer $TOKEN"
-```
